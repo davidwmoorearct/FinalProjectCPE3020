@@ -8,6 +8,7 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
+use work.MetaStab.ALL;
 
 entity TransferController is
     generic (
@@ -53,7 +54,6 @@ architecture TransferController_ARCH of TransferController is
     signal ctr         : integer := 0;
     signal led_cnt     : integer range 0 to 255 := 0; 
     signal current_bit : std_logic;
-    signal writeData   : std_logic_vector (23 downto 0);
     signal dataBack   : std_logic_vector(23 downto 0);
     signal dataBall   : std_logic_vector(23 downto 0);
    
@@ -74,6 +74,14 @@ architecture TransferController_ARCH of TransferController is
     signal debounce_ctr : integer range 0 to 100000 := 0; 
     signal debounce_tick : std_logic := '0';
     signal drawRegister : std_logic_vector (9 downto 0) := "0000000001";
+    
+    -- Intermediate signals for metastabilization
+    signal moveLeft_mid, moveRight_mid : std_logic := '0';
+    signal activePatternBall_mid, activePatternBack_mid : std_logic_vector(2 downto 0) := (others => '0');
+
+    -- Metastabilized signals
+    signal moveLeft_sync, moveRight_sync : std_logic;
+    signal activePatternBall_sync, activePatternBack_sync : std_logic_vector(2 downto 0);
     
 begin
 
@@ -155,6 +163,31 @@ begin
     end if;
 end process;
     
+    
+    METASTABILIZER: process(clock, reset)
+    begin
+    -- this thing is a monster.
+    STABILIZE_INTERFACE
+    (
+    clock => clock,
+    reset => reset,
+    moveLeft => moveLeft,
+    moveRight => moveRight, 
+    activePatternBall => activePatternBall,
+    activePatternBack => activePatternBack,
+    moveLeft_mid => moveLeft_mid,
+    moveRight_mid => moveRight_mid,
+    activePatternBall_mid => activePatternBall_mid, 
+    activePatternBack_mid => activePatternBack_mid,
+    moveLeft_sync => moveLeft_sync,
+    moveRight_sync => moveRight_sync,
+    activePatternBall_sync => activePatternBall_sync,
+    activePatternBack_sync => activePatternBack_sync
+    );
+    
+    end process;
+    
+    
     --============================================================================
     --  debounces the left and right buttons using shift regs
     --============================================================================
@@ -170,8 +203,8 @@ end process;
             
         elsif (rising_edge (clock)) then
             if (debounce_tick = '1') then
-                leftReg := moveLeft & leftReg(7 downto 1);
-                rightReg := moveRight & rightReg(7 downto 1);
+                leftReg := moveLeft_sync & leftReg(7 downto 1);
+                rightReg := moveRight_sync & rightReg(7 downto 1);
             end if;
             
             if (leftReg = "00000000") then
@@ -265,8 +298,8 @@ end process;
                          X"FFFFFF" when "111", -- Full White
                          X"000000" when others;
    
-   outputPatternBall <= '0' & activePatternBall;
-   outputPatternBack <= '0' & activePatternBack;
+   outputPatternBall <= '0' & activePatternBall_sync;
+   outputPatternBack <= '0' & activePatternBack_sync;
    
     
     SEVSEG_DRIVER : SevenSegmentDriver
